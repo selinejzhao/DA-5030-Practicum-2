@@ -1,0 +1,803 @@
+---
+title: "DA5030.P2.BenderReznikZhao"
+author: "AlexBender"
+date: "October 31, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+PROBLEM 2
+
+
+Let's load the data.
+
+```{r}
+uffi.data <- read.csv("C:/Users/alexb/OneDrive/Fall 2018 Classes/DA5030/Practicum2/uffidata.csv", stringsAsFactors = FALSE)
+#Gain understanding
+str(uffi.data)
+summary(uffi.data)
+#attach data
+attach(uffi.data)
+```
+As we can see, there are no missing values (woo!). We have a mix of discrete and continuous variables which will be good for our subsequent analysis. Lastly, based on the distances between the max/mins with the 1st and 3rd quartiles we can spot a few values that seem to be extreme values/outliers (such as in Living_Are_SF), but we can't be too sure just yet.
+
+
+*1) Are there outliers in the data set? How do you identify outliers and how do you deal with them? Remove them but create a second data set with outliers removed. Keep the original data set.*
+
+
+There are multiple ways to detect outlier. We are going to explore using the IQR and the z-score, then we will make a determination of which values to use. Outliers can also be detected by plotting a linear regression model and with principal component analysis. We are making the assumption that outliers among any of the features are undesireable, so we are going to remove rows in which any of the features contain outliers. 
+
+We are going to detect outliers using the IQR formula as well as Z/score.
+
+IQR = interquartile range
+Outlier = Q1 -1.5(IQR) or Q3 + 1.5(IQR)
+
+```{r}
+#create a function that calculates outliers based on IQR and formula above
+#function takes in a continuous variable and spits out the upper and lower outlier bounds
+outlier.iqr <- function(cvar) {
+a <- quantile(cvar)
+iqr <- IQR(cvar)  
+lower <- as.numeric(a[2]) - (1.5*(iqr))
+upper <- as.numeric(a[4]) + (1.5*(iqr))
+b <- as.data.frame(c(lower,upper))
+names(b) <- "Bounds"
+b
+}
+```
+Outlier = +/- 3 standard deviations from the mean. (A.k.a +/- z-score of 3)
+```{r}
+#create a function that calculates outliers based on zscore and formula above
+#function takes in a continuous variable and spits out the z scores
+outlier.z <- function(cvar) {
+a <- sd(cvar)
+b <- mean(cvar)  
+c <- ((b-cvar)/(a))
+c
+}
+```
+First let's output all observation numbers of the rows that have a abs(z-score) >3
+```{r}
+#detect which observations have large z-scores
+uffi.data[abs(outlier.z(Sale_Price))>3,"Observation"]
+#detect which observations have large z-scores
+uffi.data[abs(outlier.z(Bsmnt_Fin_SF))>3,"Observation"]
+#detect which observations have large z-scores
+uffi.data[abs(outlier.z(Lot_Area))>3,"Observation"]
+#detect which observations have large z-scores
+uffi.data[abs(outlier.z(Living_Area_SF))>3,"Observation"]
+```
+Based on the z-score method we can see that observations 94, 40, and 60 have values that are larger than 3 z-scores from the mean. These 3 values are considered outliers by this method. 
+
+Now let's explore the outlier bounds for all of the continuous varaibles using IQR method. 
+
+```{r}
+#sale_price
+sale.out <- outlier.iqr(Sale_Price)
+sale.out
+
+#Bsmnt_Fin_SF
+bsmnt.out <- outlier.iqr(Bsmnt_Fin_SF)
+bsmnt.out
+
+#lot_area
+lot.out <- outlier.iqr(Lot_Area)
+lot.out
+
+#living_area
+living.out <- outlier.iqr(Living_Area_SF)
+living.out
+```
+Here we can see the upper and lower bounds for outliers for each of the continuous variables. If values fall outside of this range, they are considered outliers by this method. 
+
+Let's visually explore these values (if any) using a plot. We are going to label any points that fall outside of these bound with their observation number. 
+
+```{r}
+#visually explore outliers using plots
+#install.packages("ggplot2")
+
+library(ggplot2)
+
+#make a plot that highlights all points above the certain range
+plot.sale <- ggplot(uffi.data, aes(Observation, Sale_Price, label=Observation)) + geom_point() + geom_line(y=sale.out[2,], color = "#8954ea")+ geom_text(aes(label=ifelse(Sale_Price>sale.out[2,],as.character(Observation),'')),hjust=0,vjust=0)+ geom_line(y=sale.out[1,], color = "#8954ea")+ geom_text(aes(label=ifelse(Sale_Price<sale.out[1,],as.character(Observation),'')),hjust=0,vjust=0)+labs(
+    title = "Scatter Plot of Sale Price"
+  )+ theme(legend.position="none",plot.title= element_text(size=14, face = "bold", hjust = 0.5))
+
+plot.sale
+```
+
+```{r}
+#output observation numbers that fall out of the range
+uffi.data[uffi.data[,"Sale_Price"] >sale.out[2,],"Observation"]
+uffi.data[uffi.data[,"Sale_Price"] <sale.out[1,],"Observation"]
+```
+As we can see by the plot and the output of observation numbers that fall in the outlier range, there are multiple observation that are considered outliers. In this case it is observation number 95,19,97,22,21,71,94,40,and 60. All of these fall on the high end of sale_price.
+
+Now let's check the other variables just to see if there are any additional. 
+
+``` {r}
+#make a plot that highlights all points above the certain range
+plot.bsmnt <- ggplot(uffi.data, aes(Observation, Bsmnt_Fin_SF, label=Observation)) + geom_point() + geom_line(y=bsmnt.out[2,], color = "#8954ea")+ geom_text(aes(label=ifelse(Bsmnt_Fin_SF>bsmnt.out[2,],as.character(Observation),'')),hjust=0,vjust=0)+ geom_line(y=bsmnt.out[1,], color = "#8954ea")+ geom_text(aes(label=ifelse(Bsmnt_Fin_SF<bsmnt.out[1,],as.character(Observation),'')),hjust=0,vjust=0)+labs(
+    title = "Scatter Plot of Bsmnt SF"
+  )+ theme(legend.position="none",plot.title= element_text(size=14, face = "bold", hjust = 0.5))
+
+plot.bsmnt
+#see if max is within the bounds
+max(Bsmnt_Fin_SF)
+```
+There are no outliers for the Bsmnt_Fin_SF metric. Let's double check.
+```{r}
+#output observation numbers that fall out of the range
+uffi.data[uffi.data[,"Bsmnt_Fin_SF"] >bsmnt.out[2,],"Observation"]
+uffi.data[uffi.data[,"Bsmnt_Fin_SF"] <bsmnt.out[1,],"Observation"]
+```
+Yep, none. 
+
+Now let's check lot area!
+
+``` {r}
+#make a plot that highlights all points above the certain range
+plot.lot <- ggplot(uffi.data, aes(Observation, Lot_Area, label=Observation)) + geom_point() + geom_line(y=lot.out[2,], color = "#8954ea")+ geom_text(aes(label=ifelse(Lot_Area>lot.out[2,],as.character(Observation),'')),hjust=0,vjust=0)+ geom_line(y=lot.out[1,], color = "#8954ea")+ geom_text(aes(label=ifelse(Lot_Area<lot.out[1,],as.character(Observation),'')),hjust=0,vjust=0)+labs(
+    title = "Scatter Plot of Lot Area"
+  )+ theme(legend.position="none",plot.title= element_text(size=14, face = "bold", hjust = 0.5))
+
+plot.lot
+
+```
+There are outliers for the Lot_Area metric. Let's double check.
+```{r}
+#output observation numbers that fall out of the range
+uffi.data[uffi.data[,"Lot_Area"] >lot.out[2,],"Observation"]
+uffi.data[uffi.data[,"Lot_Area"] <lot.out[1,],"Observation"]
+```
+Observations 84, 12, 48, 97, 40, and 60 are considered outliers in the Lot Area data. 
+
+Now let's check Living area. 
+
+``` {r}
+#make a plot that highlights all points above the certain range
+plot.living <- ggplot(uffi.data, aes(Observation, Living_Area_SF, label=Observation)) + geom_point() + geom_line(y=living.out[2,], color = "#8954ea")+ geom_text(aes(label=ifelse(Living_Area_SF>living.out[2,],as.character(Observation),'')),hjust=0,vjust=0)+ geom_line(y=living.out[1,], color = "#8954ea")+ geom_text(aes(label=ifelse(Living_Area_SF<living.out[1,],as.character(Observation),'')),hjust=0,vjust=0)+labs(
+    title = "Scatter Plot of Living Area"
+  )+ theme(legend.position="none",plot.title= element_text(size=14, face = "bold", hjust = 0.5))
+
+plot.living
+
+```
+There are outliers for the Living_Area metric. Let's double check.
+```{r}
+#output observation numbers that fall out of the range
+uffi.data[uffi.data[,"Living_Area_SF"] >living.out[2,],"Observation"]
+uffi.data[uffi.data[,"Living_Area_SF"] <living.out[1,],"Observation"]
+```
+Observations 21, 40, and 60 are considered outliers in the Living Area feature. 
+
+Overall, the IQRoutlier range tells us that observation all have extreme values in at least one of the features. 
+
+We can see that the threshold for what is considered an outlier is lower in IQR vs. z-score. 
+
+Z- score marked 94,40, and 60 as outliers, whereas IQR method marked 95,19,97,22,21,71,94,40,60,84,12,48 as outliers. 
+
+Let's air on the side of beong cautious with removing outliers, since we don't want to risk information loss. Therefore, we are going to remove the outliers that the z-score methof found. These are Observation numbers 94, 40, and 60. 
+
+```{r}
+#remove observation numbers 94, 40, and 60
+uffi.no <- uffi.data[Observation!=94 & Observation!=40 & Observation!=60 ,]
+
+detach(uffi.data)
+```
+
+The outliers have been removed in the data frame uffi.no.
+
+*2) What are the correlations to the response variable and are there colinearities? Build a full correlation matrix.*
+
+First let's only keep the columns with information. We are going to remove the observation column from the dataset. 
+
+```{r}
+#remove ID column (Observation), since it is just an Autonumber
+
+uffi.no <- uffi.no[-1]
+```
+
+```{r}
+#install.packages(psych)
+library(psych)
+
+#create a pairs panel to explore correlations between variables
+pairs.panels(uffi.no)
+```
+This doesn't look very readable, so let's explore other options. 
+
+```{r}
+#create correlation matrix 
+cormatx <- round(cor(uffi.no), 2)
+cormatx
+```
+This gives us the correlation between every feature in the data set. The diagonal is all 1.00, since it is the correlation with itself. High values indicate high correlations, and when there are multiple features correlated with one another, that indicates collinearity, which is not ideal for a regression analysis Essentially, the same information is conveyed by multiple variables. Right off the bat I can see some high correlations such as between Living area and sale price. 
+Let's also just explore correlations to the response variable sale price. 
+
+```{r}
+#correlations just to the response variable Sale Price
+cormatx.response <- round(cor(uffi.no[c(1,3:11)], uffi.no[2]),2)
+cormatx.response
+```
+
+This is a little difficult to visualize, though. Let's see if we can visualize it better. 
+
+
+Using starter code from STHDA [1], we are going to create a correlation matrix that is shaded by intensity of correlation.
+```{r}
+reorder_cormatx <- function(cormat){
+# Use correlation between variables as distance
+dd <- as.dist((1-cormatx)/2)
+hc <- hclust(dd)
+cormat <-cormat[hc$order, hc$order]
+}
+```
+
+```{r}
+# Get upper triangle of the correlation matrix
+  get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+  }
+```
+
+```{r}
+#install.packages("reshape2")
+library(reshape2)
+# Reorder the correlation matrix
+cormatx <- reorder_cormatx(cormatx)
+upper_tri <- get_upper_tri(cormatx)
+# Melt the correlation matrix
+melted_cormatx <- melt(upper_tri, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormatx, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 8, hjust = 1))+
+ coord_fixed()
+
+#format heatmap
+ggheatmap + 
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 2.5) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 5, barheight = .5,
+                title.position = "top", title.hjust = 0.5))
+```
+Ahh much better. Now we can visualize our correlations. As we can see, overall the correlations between the variables aren't very high which is a good sign for lack of collinearity. The strongest correlations (which we are going to count as ones with an absolute value >=.5 ) are between Sale Prince & Living Area (.70) and Sale Price & Year sold (.70). Collinearity exists when too many features explain eachother, and it seems that the correlations between the variables aren't very high. The highest correlations are all with the target variable (Sale Price), which is a good sign. 
+
+*3) What is the ideal multiple regression model for predicting home prices in this data set using the data set with outliers removed? Provide a detailed analysis of the model, including Adjusted R-Squared, RMSE, and p-values of principal components. Use backward elimination by p-value to build the model.*
+
+Though finding the optimal multiple regression model is an NP complete problem and cannot be computed in polynomial time, we can still find an ideal problem given that constraint. 
+
+First before building any regression model we have to check if our features are normall distributed. Regression models make the assumption that features are normally distributed. If they are not, we can try some transforms to change the distribution. 
+
+Because the full pairs.panels is quite convoluted, we are going to do these separately. 
+
+```{r}
+#make pairs.panels smaller so it's more readable. 
+pairs.panels(uffi.no[1:4])
+pairs.panels(uffi.no[5:8])
+pairs.panels(uffi.no[9:11])
+```
+Let's explore a few of these closer. In particular we are concerned about transforming the continuous ones such as Sale_Price, Lot_Area, Bsmnt_Fin_SF, and Living_Area to make them resemble normal distributions more closely.  
+
+sale_Price: This is our response variable.
+
+```{r}
+# Histogram with density instead of count on y-axis
+# Overlay with transparent density plot
+ggplot(uffi.no, aes(x=uffi.no$Sale_Price)) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+hist(log(uffi.no$Sale_Price)) 
+hist(1/(uffi.no$Sale_Price))
+hist(sqrt(uffi.no$Sale_Price))
+hist((uffi.no$Sale_Price)^2)
+```
+It looks like there is a bit of a right skew here but not too bad. **Let's**
+
+Living Area:
+
+```{r}
+# Histogram with density instead of count on y-axis
+# Overlay with transparent density plot
+ggplot(uffi.no, aes(x=uffi.no$Living_Area_SF)) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+```
+This looks like it is right skewed.
+Let's try some transforms to see if they help the distribution. 
+
+```{r}
+# Histogram with density instead of count on y-axis
+# Overlay with transparent density plot
+
+#LOG TRANSFORM
+ggplot(uffi.no, aes(x=log(uffi.no$Living_Area_SF))) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#INVERSE TRANSFORM
+ggplot(uffi.no, aes(x=1/((uffi.no$Living_Area_SF)))) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#SQRT TRANSFORM
+ggplot(uffi.no, aes(x=sqrt(uffi.no$Living_Area_SF))) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#SQUARE TRANSFORM
+ggplot(uffi.no, aes(x=(uffi.no$Living_Area_SF)^2)) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+```
+By the looks of it, the log transform and the inverse transform both make the distribution look more normal. We are going to select the log transform. All instances of Living_Area_SF will now be replaced with its log. 
+
+```{r}
+#replace Living area with its log
+uffi.norm <- uffi.no
+uffi.norm$Living_Area_SF <- log(uffi.no$Living_Area_SF)
+```
+Now let's explore Lot Area:
+
+```{r}
+# Histogram with density instead of count on y-axis
+# Overlay with transparent density plot
+ggplot(uffi.no, aes(x=uffi.no$Lot_Area)) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+```
+This looks a little right skewed. Let's try some transforms!
+
+```{r}
+#plot histograms of transforms
+
+#LOG TRANSFORM
+ggplot(uffi.no, aes(x=log(uffi.no$Lot_Area))) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#INVERSE TRANSFORM
+ggplot(uffi.no, aes(x=1/((uffi.no$Lot_Area)))) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#SQRT TRANSFORM
+ggplot(uffi.no, aes(x=sqrt(uffi.no$Lot_Area))) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#SQUARE TRANSFORM
+ggplot(uffi.no, aes(x=(uffi.no$Lot_Area)^2)) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+```
+The sqrt transform looks slightly better, so we are going to roll with it!
+
+```{r}
+#replace Lot area with its sqrt
+uffi.norm$Lot_Area <- sqrt(uffi.no$Lot_Area)
+```
+
+Now let's explore Basement Square feet. 
+
+```{r}
+# Histogram with density instead of count on y-axis
+# Overlay with transparent density plot
+ggplot(uffi.no, aes(x=uffi.no$Bsmnt_Fin_SF)) + geom_histogram(aes(y=..density..),bins=10, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+hist(log(uffi.no$Bsmnt_Fin_SF)) # too many undefined values
+hist(1/(uffi.no$Bsmnt_Fin_SF))
+hist(sqrt(uffi.no$Bsmnt_Fin_SF))
+hist((uffi.no$Bsmnt_Fin_SF)^2)
+hist(((uffi.no$Bsmnt_Fin_SF-mean(uffi.no$Bsmnt_Fin_SF))/(sd(uffi.no$Bsmnt_Fin_SF))))#z score transform
+hist(((uffi.no$Bsmnt_Fin_SF-min(uffi.no$Bsmnt_Fin_SF))/(diff(range(uffi.no$Bsmnt_Fin_SF)))))#min/max transform
+```
+None of the transforms help with the distribution, so we are going to leave the original. No matter what transform we apply to this data, the large spike in "0" values (indicating homes without a basement) will always be present. Make note: Bsmnt_Fin_SF not being normally distributed may skew some results, but hopefully not by much.
+
+
+**Now our uffi.norm (normalized) dataset contains more normally distributed features. It is time to see which features are important to predicting our response variable: Sale Price. For this we are going to use Principal Component Analysis.**
+
+Essentially what we are going to do in PCA is distribute the variation across different components in the dataset. This helps us to see patterns that wouldn't be visible in typical methods. Once we do this, we are going to drop the PC with the least variation. 
+
+Principal component analysis - works best when there is high correlation between variables, which we don't have, but alas let's see what unfolds. 
+
+
+**The 1st step after normalizing the data is to calculate the eigenvalues of a covariance matrix.**
+
+Enc_Pk_Spaces is a categorical, non-binary variable, but it is ordinal so we don't need to dummy code. 
+
+```{r}
+#Enc_Pk_Spaces has 3 levels (0,1,2)
+table(uffi.norm$Enc_Pk_Spaces)
+```
+
+
+Let's look at all features to see which are significant. We are going to do backfitting based on p value (statistical significance).
+```{r}
+#make model for all features
+m1 <- lm(Sale_Price ~., data = uffi.norm)
+summary(m1)
+```
+The 45 years feature is the least statistically significant (highest p value), so we will remove it. 
+
+```{r}
+#next model minus 45 years
+m2 <- lm(Sale_Price ~Year_Sold+UFFI_IN+Brick_Ext+Bsmnt_Fin_SF+Lot_Area+Enc_Pk_Spaces+Living_Area_SF+ Central_Air+ Pool , data = uffi.norm)
+summary(m2)
+```
+Now remove Brick_Ext
+
+```{r}
+#minus brick ext
+m3 <- lm(Sale_Price ~Year_Sold+UFFI_IN+Bsmnt_Fin_SF+Lot_Area+Enc_Pk_Spaces+Living_Area_SF+Central_Air+ Pool , data = uffi.norm)
+summary(m3)
+```
+
+Now remove Central Air
+
+```{r}
+#minus central air
+m4 <- lm(Sale_Price ~Year_Sold+UFFI_IN+Bsmnt_Fin_SF+Lot_Area+Enc_Pk_Spaces+Living_Area_SF+ Pool , data = uffi.norm)
+summary(m4)
+```
+Now let's remove Lot_Area.
+```{r}
+#minus lot area
+m.final <- lm(Sale_Price ~Year_Sold+UFFI_IN+Bsmnt_Fin_SF+Enc_Pk_Spaces+Living_Area_SF+ Pool, data = uffi.norm)
+summary(m.final)
+
+```
+The next highest p-value is UFFI_IN, but we are going to make the decision to leave this in the model even though it is not as statistically significant in determing housing price as other factors. Because our litigation case is based on the fact of UFFI affecting housing prices, this feature will remain in our regression model. 
+
+We are going to make a multiple regression model based on the factors: Year_Sold + UFFI_IN + Bsmnt_Fin_SF + Enc_Pk_Spaces + Living_Area_SF + Pool. I chose these because I think they will be useful in determining a home sale price, they are relevant to our case, and most are statistically signifcant. 
+
+```{r}
+#model summary again
+summary(m.final)
+```
+The residuals tell us how much our fitted values are off of actual values for each case. Sometimes we are off by a lot (our maximum residual is 53744). But the majority of the cases are pretty good (between Q1 and Q3). Our median residual is only 473.
+
+The multiple R squared values, which is also known as the coefficient of determination tells us how well the model overall explains the values of the dependent/response variable. Our model explains about 75% of the variation in sale price.
+
+The Adjusted R squared of the model is .74, which is relatively high to start with. This means that the selected features of the multiple regression equation explain the variations in the Sales_Price data fairly well. R squared is a measure of fit, and the closer to 1 the stonger the fit. .74 is fairly high, but this number could be improved by in a variety of ways such as adding non-linear relationships or converting some numeric variables to a binary indicator.
+
+The standard error of 14420 will be sued later to calculate confidence intervals. This tells us the standard error of the model between fitted and actual values.
+
+The p-value indicates statistical significance. The higher the p-value the more likely something can be attributed to chance. We are looking for very low p-values to make for a stronger model. All of our principal components (features) that make up our model are statisticall significant except for UFF_IN. As mentioned earlier, UFFI_IN has a p-value of.11 so it just misses the cut. We are going to leave this in due to the fact that we want to see its impact on sale price for our legal case. Year_sold has a p-value of 1.63e-11, which indicates very high statistical significance. This variable's impact on sale price is not due to random chance. The same applies to Living Area (1.39e-11), Bsmnt_Fin_SF (.006), Pool (.03), and Enclosed parking spaces (.0018).
+
+The overall p-value for the model is 2.2e-16. This means that the overall model statistical significance is very high, which is a good sign. 
+
+Now let's calculate the RMSE for this model. 
+```{r}
+#calculate RMSE by squaring the residuals to make them positive then taking the square root
+RMSE <- sqrt(mean((m.final$residuals)^2))
+RMSE
+```
+The RMSE of this model is 13,883. Which isn't the most meaningful on it's own but would be more meaningful when compared to other models. However, this is saying that on average, the square error between actual and predicted squared is $13,883 for home sale price.
+
+Let's also calculate the Mean Absolute Error. This is also a measure of fit and accuracy of a regression model.
+
+```{r}
+#calculate the MAE
+mean(abs(m.final$residuals))
+```
+This is saying that on average the predicted value from the regression model is $10,483 off the actual value. This seems higher than ideal, but not that bad in the grand scheme of things. 
+
+
+Now let's try to evaluate our model using plot to derive some insights.
+```{r}
+plot(m.final)
+```
+Residuals vs. fitted:
+This helps us to detect non-linearity if the line is parabolic. Our line is a bit curved, but not entirely. This suggests there may be some linear regression features that could be described in a non-linear fashion. Also, all the labeled points are considered outliers, so this plot is helpful in identifying additional ones. Lastly, if the plot was in the shape of a funnel (which it is not), it would indicate heteroskedasticity. We could fix this problems with some form of dist transform such as log or sqrt. 
+
+Normal Q-Q:
+The more straight line in the Q-Q plot, the better. The majority of the points follow a straight line, but toward the beginning and end there's a very slight deviation. The more straight the line the more normally distributed the data. This linearity could be fixed with a non-linear transform if needed, but it looks very very good! Our transforms helped to make the data more normally distributed.
+
+Scale-Location:
+
+If there is no discernable patter in this plot it means it is good. I can't detect a pattern, meaning we don't have to fix it's non-linearity or heteroskedasticity. 
+
+Residuals vs Leverage:
+
+The labeled points indicate additional outliers with a lot of leverage (they skew the model). These could theoretically be removed to help improve our model.
+
+
+
+*4) On average, by how much do we expect UFFI to change the value of a property?*
+
+Let's print the coefficients of our regression equation to find how much on average each feature affects the response variable.
+```{r}
+#readable regression equation coefficients
+round(m.final$coefficients, 2)
+```
+As we can see here, on average, the presence of UFFI *reduces* the sale price of a home by $5,798.9.
+
+*5) If the home in question is older than 45 years old, doesn't have a finished basement, has a lot area of 4000 square feet, has a brick exterior, 1 enclosed parking space, 1480 square feet of living space, central air, and no pool, what is its predicted value and what are the 95% confidence intervals of this home with UFFI and without UFFI?*
+
+**ASSUMPTION: Since the problem did not identify the year sold, but our final model includes Year SOld as a feature, we are going to assume the most common year sold, 2011. We think this may because a different data set is given in the practicum page vs. the case study page. We are using the one from the practicum page.**
+
+Let's create this 1 validation home instance. We are only going to consider the features that we considered to be significant to our model, which are Year_Sold, UFFI_IN, Bsmnt_Fin_SF, Enc_Pk_Spaces, pool, and Living_Area_SF.
+
+Must remember that we transformed some of our features!
+
+```{r}
+#create equation for home in question
+bsmt <- 0
+parking <- 1
+living <- log(1480)#remember log transform
+pool <- 0
+uffi.y <- 1
+uffi.n <- 0
+ys <- 2011 #assume Year sold = 2011
+```
+
+Now let's calculate the prediction for this home with and without UFFI. First, WITH:
+
+```{r}
+#prediction of home price with UFFI present
+pred.uffi <- -11735099.9 + 5751.4*(ys) + 17.6*(bsmt) + 7475.7*(parking) + 40641.9*(living)+ 22484.0*(pool) - 5798.8*(uffi.y)
+pred.uffi
+```
+Our predicted home sale price for this home WITH UFFI is $129,320.
+
+Confidence interval time!
+
+Confidence Interval for a forecast
+usually do 95% interval
+
+Forecast +/- 1.96*SE
+1.96 = z score for p=.05
+
+The Standard Error (SE) from the model summary as we mentioned earlier is 14420.
+
+
+Let's calculate our 95% confidence interval for this home. 
+
+```{r}
+#Confidence interval = :
+#Lower, upper
+pred.uffi - 1.96*14420
+pred.uffi + 1.96*14420
+```
+The 95% confidence interval is 101,056.8 - 157,583.2. This is a pretty big range considering litigation is involved.
+
+Now let's calculate our range for this home without uffi.
+
+
+```{r}
+#prediction of home price with UFFI absent
+pred.no.uffi <- -11735099.9 + 5751.4*(ys) + 17.6*(bsmt) + 7475.7*(parking) + 40641.9*(living)+ 22484.0*(pool) - 5798.8*(uffi.n)
+pred.no.uffi
+```
+Our predicted home sale price for this home WITHOUT UFFI is $135,118.8. This is higher than with UFFI, as expected.
+
+Confidence interval time!
+
+Confidence Interval for a forecast
+usually do 95% interval
+
+Forecast +/- 1.96*SE
+1.96 = z score for p=.05
+
+The Standard Error (SE) from the model summary as we mentioned earlier is 14420.
+
+
+Let's calculate our 95% confidence interval for this home. 
+
+```{r}
+#Confidence interval = :
+#Lower, upper
+pred.no.uffi - 1.96*14420
+pred.no.uffi + 1.96*14420
+```
+The 95% confidence interval without UFFI is 106,855.6 - 163,382.
+
+Based on these prediction, our model has proved the claim that our client is worthy of additional compensation of just under $6,000. 
+
+ANOVA??
+
+
+*References*
+
+[1] 	STHDA, "ggplot2 : Quick correlation matrix heatmap - R software and data visualization," Statistical tools for high-throughput data analysis, [Online]. Available: http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization. [Accessed 1 November 2018].
+
+[2] 	neilfws, "Label points in geom_point," Stack Overflow, 12 September 2017. [Online]. Available: https://stackoverflow.com/questions/15624656/label-points-in-geom-point. [Accessed 1 November 2018].
+
+
+PROBLEM 4
+
+*1) Elaborate on the use of kNN and Naive Bayes for data imputation. Explain in reasonable detail how you would use these algorithms to impute missing data and why it can work.*
+
+kNN can be used for imputing categorical and numerical variables in a similar fashion that it can be used for classisifcation and regression for a response variable. The kNN treats the features with NA values as the response variable, one at a time. Then, the missing/NA values acts just as unknown data, so you have to predict (for numerical variables) or classify (for categorical variables) using the features that are nearest to the cases with the missing value in n-dimensional space.  Essentially kNN will classify which values the missing one should take based on its nearest neighbors. This offers more granularity in imputation method than just using the mode, for example. This imputation method is done by using the feature with the missing values as the target/response variable and the row in which each sits as the unknown/validation data. All other fully filled data cases will be used to train the kNN algorithm to predict the value or classification of the missing values i.e. the imputation is based on the non-missing data. kNN is particularly useful for data imputation because it factors in orther variables when predicting an unknown value with no underlying assumption of the data. kNN is effective with categorical, numerical, etc data types as well as kNN is non-parametric, so it doesn't assume an underlying data distribution. One drawback of kNN for imputation, however, is it requires data preprocessing in order to accuractely count distances in the n-dimensional space. Also, kNN is very computationally expensive, so it may not be feasible in very large datasets with very large numbers of outliers because the Runtime complexity is of order O(wmn) (w = new cases/missing values, n = number of cases in training data/number of non-NA cases, and m = #of features/dimensions in the dataset.) An increase in w,m,or n will have a large impact on run-time complexity. You don't want to wait for ages to just have data vaues be imputed! This can work as a method of data imputation just like it works for predicting unknown values in a validation dataset, it just uses the non-missing data to train the algorithm. 
+
+The VIM package offers a great implementation for automaticall imputing missing values based on non-missing data. 
+
+Here's a walkthrough using the customer data from Assignment 1:
+
+```{r}
+#install.packages("VIM")
+library(VIM)
+
+txn.data<- read.csv("/Users/alexb/Documents/Fall 2018 Classes/DA5030/Assignment 1/customertxndata.csv",header=FALSE)
+#name column headers of data frame
+names(txn.data)<- c("Visits", "Transactions", "OS", "Gender", "Revenue")
+#provide a quick glimpse at data. Provides central tendency calculations and other useful features
+summary(txn.data)
+
+#Let's only use the 1st 100 rows to make this faster
+txn <- txn.data[1:100,]
+
+#make sure columns are correct data type
+txn$Transactions <- as.double(txn$Transactions)
+#print summary
+summary(txn)
+```
+As we can see here there are NA values in both Transactions (numerical) and Gender (categorical). We are going to use kNN to predict these 11 Transaction NAs and 24 Gender NAs. We are going to use a k of 10 since it is the sqrt of the 100 rows we are using. 
+
+```{r}
+#Use VIM kNN implementation to impute missing values
+txn.knn <- kNN(txn, variable = c("Transactions", "Gender"), k = 10)
+
+#print out summary to see if they're gone
+summary(txn.knn)
+```
+As we can see, there are no more missing values in the columns "Transactions" and "Gender". Of the 24 missing Gender values, it imputed 4 as Female and 20 as male. 
+
+In a similar fashion, the Naive Bayes algorithm can also be used as a method for data imputation. The main limitation of NB as a method for data imputation is it doesn not work very well for continuous variables. Also, Naive Bayes is used for binary classification, so it won't be the most useful data imputation method for non-binary variables. When the data is primarily categorical, NB is very powerful. If there happens to be continuous variables, however, NB handles this by "binning" them together into ranges - essentially making them into categorical variables. FOr NB to work for data imputation, you need to use the non-missing values as your training data. First you'll have to create a frequency table then turn probabilities into likelihood table for your binary feature with missing values. You treat the columns with missing values as the target/response variable for NB. For each column you would create a frequency table that records the number of times each of the non-missing data values occured when the binary response variable was present in the training (non-missing) date. From this you will be able to construct likelihood table based on the conditional probability for each non-missing feature's rows given the column with missing data was either 0 or 1. From this you will be able to see the conditional probabilities of which combination of non-missing factors leads to a 0 or a 1 in the missing data instance. If the output probability is above your threshold, you will impute a 1 (or presence of the binary response variable), if it is below your threshold, you will impute a 0 (or absence of your response variable). It can work because each of the non-missing cases act as training data and each of the missing cases act as validation / unknown data, just like kNN for imputation above. NB will impute the most likely value for the NA.
+
+
+
+
+*References:*
+
+[3] 	Tim, "K-Nearest Neighbor imputation explanation," Cross Validated , 6 February 2018. [Online]. Available: https://stats.stackexchange.com/questions/327074/k-nearest-neighbor-imputation-explanation. [Accessed 1 November 2018].
+
+[4] 	Y. Obadia, "The use of KNN for missing values," Medium, 31 January 2017. [Online]. Available: https://towardsdatascience.com/the-use-of-knn-for-missing-values-cf33d935c637. [Accessed 2 November 2018].
+
+[5] 	G. Nath, "Missing Value - kNN imputation in R," YouTube, 14 February 2016. [Online]. Available: https://www.youtube.com/watch?v=u8XvfhBdbMw. [Accessed 3 November 2018].
+
+[6] J. T. Garcia, Antonio & Hruschka, Eduardo. (2005). Naive Bayes as an Imputation Tool for Classification Problems.. Proceedings - HIS 2005: Fifth International Conference on Hybrid Intelligent Systems. 2005. 497-499. 10.1109/ICHIS.2005.78.
+
+[7] 	Priya.S and D. A. S. Thanamani, "Multiple Imputation Of Missing Data Using," International Journal of Innovative Research in Computer and Communication Engineering, April 2017. [Online]. Available: https://www.researchgate.net/publication/220980857_Naive_Bayes_as_an_Imputation_Tool_for_Classification_Problems. [Accessed 2 November 2018].
+
+
+PROBLEM 1
+
+```{r}
+adult.data<- read.csv("/Users/alexb/OneDrive/Fall 2018 Classes/DA5030/Practicum2/adult.data.csv",header=FALSE, na.strings = "?")#na.string are noted as "?" in this dataset
+#name column headers of data frame
+names(adult.data)<- c("age", "workclass", "finalweight", "education", "education_num","marital_status", "occupation", "relationship", "race", "sex","capital_gain", "capital_loss", "hours_per_week", "native_country", "income")
+```
+The data set had a decent amount of leading and trailing whitespaces, so before uploading into R we did a quick trim in Excel and removed those whitespaces. 
+
+```{r}
+#explore the data
+str(adult.data)
+summary(adult.data)
+head(adult.data)
+```
+we see that there are some numerical variables and some categorical. We will have to decided wheter or not to keep (must bin them) or remove these features. 
+
+Workclass, occupation, and native country all have a fair amont of missing values. We are going to handle these first. 
+
+
+Naive Bayes assumes that binnes continuous variables are normall distrubuted, so let's take a look at all of the continuous variables to see their underlying distrubution. 
+
+Outliers??
+
+```{r}
+test1 <- adult.data
+
+library(psych)
+pairs.panels(test1[c(1,3,5)])
+pairs.panels(test1[c(11,12,13)])
+```
+
+
+References:
+
+[8] 	M. H. Futra, "How to use k-fold cross validation in naive bayes classifier?," Cross Validated, 14 October 2014. [Online]. Available: https://stats.stackexchange.com/questions/117607/how-to-use-k-fold-cross-validation-in-naive-bayes-classifier. [Accessed 3 November 2018].
+
+
+PROBLEM 3
+
+
+Let's take a look at the new glm function with the new formula for predicting if the people survive or not across all of the variables except PF and G3 to get an understanding. We take out PF and G3 because they are essentially the same as the PF.pass column. We don't want to risk overfitting.
+```{r}
+#fit glm model for logistic regression
+log.m.int <- glm(formula = PF.pass ~ ., data = student.mat[-c(33,34)])
+summary(log.m.int)
+```
+The glm function automatically dummy codes categorical variables into n - 1 levels.
+
+```{r}
+pairs.panels(student.mat[c("G2", "G1", "Walc", "goout","famrel", "age")])
+```
+We can see the variables "G2", "G1", "Walc", "goout","famrel", and "age" are the most statistically significant, so we will use these for the logistic regression equation to start before be do backfitting. 
+
+```{r}
+#fit glm model for logistic regression
+log.m <- glm(formula = PF.pass ~ G2+G1+Walc+goout+famrel+age, family=binomial, data = student.mat)
+summary(log.m)
+```
+
+Based on this, we can see that G1 isn't statistically significant, so we will remove it. 
+
+```{r}
+#fit glm model for logistic regression
+log.m2 <- glm(formula = PF.pass ~ G2+Walc+goout+famrel+age, family=binomial, data = student.mat)
+summary(log.m2)
+```
+Now let's remove age.
+
+```{r}
+#fit glm model for logistic regression
+log.f <- glm(formula = PF.pass ~ G2+Walc+goout+famrel, family=binomial, data = student.mat)
+summary(log.f)
+```
+Now all of our predictors are statistically significant! Our final model includes G2, Walc, goout, and famrel. 
+
+We can also use the step() function to do feature selection automatically. Step uses AIC as the metric instead of statistical significance, so the features very well may be different. 
+
+Let's try it. 
+
+```{r}
+#use step function for feature selection
+#step(glm(formula = PF.pass ~ ., data = student.mat[-c(33,34)]))
+```
+The final output of the step function shows that the features age,traveltime,failures,nurseryyes,famrel,goout,Walc,absences,G1, and G2 were selected. We are going to move forward with the model based on statistical significance, but I wanted to demonstrate that the step function can be used as well. 
+
+4) State the regression equation.
+
+```{r}
+#regression equation
+log.f
+```
+The regression equation is y = -23.5271 + 2.2046(G2) + 0.6245(Walc) - 0.6309(goout) + 0.9516(famrel)
+
+
+4) What is the accuracy of your model? Use the entire data set for both training and validation.
+
+Now lets create our validation data to compare and find our accuracy.
+```{r}
+#factor of just the actual labels
+test.labels <- as.matrix(student.mat["PF.pass"])
+test.labels <- as.factor(test.labels)
+
+#make data frame for validation
+test.data <- student.mat[-c(33,34)]
+```
+
+```{r}
+#predict actual values 
+pred <- predict(log.f, test.data, type = "response")
+pred2 <- predict.glm(log.f, test.data, type = "response")
+#check out initial prediction for the 395 cases
+head(pred)
+head(pred2)
+```
+The output of the logistic regression equation is its probability of being a "Passing"" grade. As we can see by the first 2 entries, there is a very low probability of them being passing grades, and in reality they are both Failing. This is a good initial spot check.
+
+I am also showing that predict and predict.glm are the same in this instance
+
+Let's apply a threshold of .5. Anything above .5 probability will be considered Passing and below will be considered failing. 
+
+```{r}
+#Apply prediction threshold
+pred <- as.factor(ifelse(pred > 0.5,1,0))
+head(pred)
+```
+
+
+```{r}
+#install.packages("caret")
+library(caret)
+#check accuracy and false/true positives/negatives
+confusionMatrix(pred, test.labels)
+#same as confusionMatrix(pred, as.factor(test.data$PF.pass))
+
+```
+As a reminder: 0 means FAIL and 1 means PASS. My model predicted 92.4% accuracy. 
+
+         Reference
+Prediction   0   1
+         0 113  13
+         1  17 252
+         
+Out of the 395 observations, 365 were predicted correctly, 17 were false positives (predicted as PASS, when really FAIL), and 13 were false negatives (predicted as FAIL, when really PASS). Based on the business case we would determine the costs associated with fale positives and negatives. In this instance I would expect that fall positives are worse because you would get someones hopes up and then crush them. When improving the model we would try to avoid these more
