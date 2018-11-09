@@ -116,75 +116,163 @@ sum(is.na(titanic$Age))
 ```
 Now both the Age and Embarked features have been processed successfully. The only feature left with NAs is Cabin, which could potentially be imputed as well. However, given the sparseness of the column (over 75% of cells blanks), it would be more useful just to not include the feature during analysis.
 
+BUILDING THE MODEL: 
+Regression models generally only work with normally distributed data, so we need to double check that our continuous variables meet this criteria before doing anything else.
+```{r}
+library(psych)
+pairs.panels(titanic[c("Age","Fare")])
+```
+As we can see, both feaatures could be improved through normalization, although the Age factor seems more normal in comparison to Fare.
+
+Normalizing Age
+```{r}
+#histogram in detail
+ggplot(titanic, aes(x=titanic$Age)) + geom_histogram(aes(y=..density..), bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+```
+```{r}
+#LOG TRANSFORM
+ggplot(titanic, aes(x=log(titanic$Age))) + geom_histogram(aes(y=..density..),bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#INVERSE TRANSFORM
+ggplot(titanic, aes(x=1/((titanic$Age)))) + geom_histogram(aes(y=..density..),bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#SQRT TRANSFORM
+ggplot(titanic, aes(x=sqrt(titanic$Age))) + geom_histogram(aes(y=..density..),bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#SQUARE TRANSFORM
+ggplot(titanic, aes(x=(titanic$Age)^2)) + geom_histogram(aes(y=..density..),bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+par(mfrow=c(1,2))
+
+#Z SCORE TRANSFORM
+hist(((titanic$Age-mean(titanic$Age))/(sd(titanic$Age))), freq=F, main="Zscore", xlab = "Normalized Age", ylim = c(0,0.5))
+lines(density((titanic$Age-mean(titanic$Age))/(sd(titanic$Age))), col="blue", lwd=2)
+
+#MIN/MAX TRANSFORM
+hist(((titanic$Age-min(titanic$Age))/(diff(range(titanic$Age)))), freq=F, main = "Min/Max", xlab = "Normalized Age")
+lines(density((titanic$Age-min(titanic$Age))/(diff(range(titanic$Age)))), col="blue", lwd=2)
+```
+None of the transforms significantly affect the distribution, so we are going to leave the original.
+
+Normalizing Fare
+```{r}
+ggplot(titanic, aes(x=titanic$Fare)) + geom_histogram(aes(y=..density..), bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+```
+```{r}
+#LOG TRANSFORM
+ggplot(titanic, aes(x=log(titanic$Fare))) + geom_histogram(aes(y=..density..),bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#INVERSE TRANSFORM
+ggplot(titanic, aes(x=1/((titanic$Fare)))) + geom_histogram(aes(y=..density..),bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#SQRT TRANSFORM
+ggplot(titanic, aes(x=sqrt(titanic$Fare))) + geom_histogram(aes(y=..density..),bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+#SQUARE TRANSFORM
+ggplot(titanic, aes(x=(titanic$Fare)^2)) + geom_histogram(aes(y=..density..),bins=30, colour="black", fill="#84ee45")+geom_density(alpha=.2, fill="#bc15c1")
+
+par(mfrow=c(1,2))
+
+#Z SCORE TRANSFORM
+hist(((titanic$Fare-mean(titanic$Fare))/(sd(titanic$Fare))), freq=F, main="Zscore", xlab = "Normalized Age", ylim = c(0,0.5))
+lines(density((titanic$Fare-mean(titanic$Fare))/(sd(titanic$Fare))), col="blue", lwd=2)
+
+#MIN/MAX TRANSFORM
+hist(((titanic$Fare-min(titanic$Fare))/(diff(range(titanic$Fare)))), freq=F, main = "Min/Max", xlab = "Normalized Age")
+lines(density((titanic$Fare-min(titanic$Fare))/(diff(range(titanic$Fare)))), col="blue", lwd=2)
+```
+Although none of these transforms are quite ideal, the square root transform is an improvement, so we will replace all cases of Fare with its square root. However, it is important to note that no matter what transform we apply to this data, the number "0" values will always be present which will likely skew the data a bit.
+```{r}
+titanic.norm <- titanic
+titanic.norm$Fare <- sqrt(titanic.norm$Fare)
+head(titanic$Fare)
+head(titanic.norm$Fare)
+```
 1. Divide the provided Titanic Survival Data into two subsets: a training data set and a test data set. Use whatever strategy you believe it best. Justify your answer.
 
 Because the Titanic dataset is already in a random order, we can split the set 80/20 train/test.
 ```{r}
-titanic$Survived <- as.factor(titanic$Survived)
-t.train <- titanic[1:712,]
-t.test <- titanic[713:891,]
+titanic.norm$Survived <- as.factor(titanic.norm$Survived)
+t.train <- titanic.norm[1:712,]
+t.test <- titanic.norm[713:891,]
 prop.table(table(t.train$Survived))
 prop.table(table(t.test$Survived))
 ```
 Both training and test datasets have an evenly split survival rate, so we can start building our model.
 
-BUILDING THE MODEL:
 3. Construct a logistic regression model to predict the probability of a passenger surviving the Titanic accident. Test the statistical significance of all parameters and eliminate those that have a p-value > 0.05 using stepwise backward elimination.
 ```{r}
 model <- glm(formula = Survived ~ Pclass+Sex+Age+SibSp+Parch+Fare+Embarked+Title, family=binomial, data = t.train)
 summary(model)
 ```
-As shown above, we can see that Title isn't statistically significant, so we will remove it.
+As shown above, we can see that TitleMrs isn't statistically significant, so we will remove it. This is an automatically created dummy variable, so we will remove it by excluding it from the other Title dummies. 
 ```{r}
-model <- glm(formula = Survived ~ Pclass+Sex+Age+SibSp+Parch+Fare+Embarked, family=binomial, data = t.train)
-summary(model)
+model2 <- glm(formula = Survived ~ Pclass+Sex+Age+SibSp+Parch+Fare+Embarked+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model2)
 ```
-Embarked to be removed next:
+Sex to be removed next:
 ```{r}
-model <- glm(formula = Survived ~ Pclass+Sex+Age+SibSp+Parch+Fare, family=binomial, data = t.train)
-summary(model)
+model3 <- glm(formula = Survived ~ Pclass+Age+SibSp+Parch+Fare+Embarked+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model3)
 ```
-Fare to be removed next
+EmbarkedQ to be removed next:
 ```{r}
-model <- glm(formula = Survived ~ Pclass+Sex+Age+SibSp+Parch, family=binomial, data = t.train)
-summary(model)
+model4 <- glm(formula = Survived ~ Pclass+Age+SibSp+Parch+Fare+factor(Embarked, exclude = "Q")+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model4)
 ```
-Parch to be removed next
+Parch to be removed next:
 ```{r}
-model <- glm(formula = Survived ~ Pclass+Sex+Age+SibSp, family=binomial, data = t.train)
-summary(model)
+model5 <- glm(formula = Survived ~ Pclass+Age+SibSp+Fare+factor(Embarked, exclude = "Q")+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model5)
 ```
-Now all of our predictors are statistically significant! The final model includes Pclass, Sex, Age, and SibSp.
+Fare to be removed next:
+```{r}
+model6 <- glm(formula = Survived ~ Pclass+Age+SibSp+factor(Embarked, exclude = "Q")+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model6)
+```
+TitleMiss to be removed next:
+```{r}
+model7 <- glm(formula = Survived ~ Pclass+Age+SibSp+factor(Embarked, exclude = "Q")+factor(Title, exclude=c("Mrs", "Miss")), family=binomial, data = t.train)
+summary(model7)
+```
+Now remove the rest of Embarked:
+```{r}
+model.final <- glm(formula = Survived ~ Pclass+Age+SibSp+factor(Title, exclude=c("Mrs", "Miss")), family=binomial, data = t.train)
+summary(model.final)
+```
+Now all of our predictors are statistically significant! The final model includes Pclass, Age, SibSp, TitleMr, TitleRare.
+
+Let's analyze the model. As we can see the final model AIC is 398.06, which seems pretty good! The model features are statistically significant and contribute information to predicting the survived class. The residuals tell us how much our fitted values are off of actual values for each case. Our median residual is only -0.4884 which is not bad for our purposes.
 
 4. State the model as a regression equation.
-The regression equation is Y = 5.393 - 1.221(Pclass) - 2.643(Sex) - 0.04316(Age) - 0.3978(SibSp)
+The regression equation is Y = 4.57789 - 0.92731(Pclass) - 0.03136(Age) - 0.3978(SibSp) - 2.95276(TitleMr) - 2.08464(TitleRare)
 
 EVALUATING THE MODEL:
 5. Test the model against the test data set and determine its prediction accuracy (as a percentage correct).
 ```{r}
 #predict actual values
-pred <- predict(model, t.test, type = "response")
+pred <- predict(model.final, t.test, type = "response")
 #apply prediction threshold
 pred <- as.factor(ifelse(pred > 0.5,1,0))
 #check accuracy and false/true positives/negatives
 library(caret)
 confusionMatrix(pred, t.test$Survived)
 ```
-Out of the 179 observations, 147 were predicted correctly, 15 were false positives, and 17 were false negatives (total 32 incorrect predictions).
+As we can see, the overall model p-value is less than 0.05, which is great! Also the accuracy is 87.8%. This is pretty good. We had 2 false positives and 13 false negatives. In this instance, a false positive would be more costly because predicting someone to survive when they actually do not is misleading. Luckily we only had 2 of these. 
 
-References:
-http://www.talkstats.com/threads/how-to-extract-titles-out-of-a-full-name-using-gsub.69337/
+*References*
+[1] Semidevil, “how to extract titles out of a full name using (gsub),” Talk Stats, 15-May-2017. [Online]. Available: http://www.talkstats.com/threads/how-to-extract-titles-out-of-a-full-name-using-gsub.69337/. [Accessed: 05-Nov-2018].
 
-https://triangleinequality.wordpress.com/2013/09/08/basic-feature-engineering-with-the-titanic-data/
+[2] “Basic Feature Engineering with the Titanic Data,” triangleinequality, 08-Sep-2013. [Online]. Available: https://triangleinequality.wordpress.com/2013/09/08/basic-feature-engineering-with-the-titanic-data/. [Accessed: 05-Nov-2018].
 
-https://en.wikipedia.org/wiki/RMS_Titanic
+[3] “RMS Titanic,” Wikipedia, 07-Nov-2018. [Online]. Available: https://en.wikipedia.org/wiki/RMS_Titanic. [Accessed: 05-Nov-2018].
 
-https://datascienceplus.com/missing-value-treatment/
+[4] S. Prabhakaran, “Missing Value Treatment,” DataScience , 25-Apr-2016. [Online]. Available: https://datascienceplus.com/missing-value-treatment/. [Accessed: 05-Nov-2018].
 
-https://www.rdocumentation.org/packages/DMwR/versions/0.4.1/topics/knnImputation
+[5] “DMwR,” function | R Documentation. [Online]. Available: https://www.rdocumentation.org/packages/DMwR/versions/0.4.1/topics/knnImputation. [Accessed: 05-Nov-2018].
 
-https://www.kaggle.com/c/titanic
+[6] Titanic: Machine Learning from Disaster. [Online]. Available: https://www.kaggle.com/c/titanic. [Accessed: 05-Nov-2018].
 
-http://www.sthda.com/english/wiki/ggplot2-box-plot-quick-start-guide-r-software-and-data-visualization#basic-box-plots
+[7] “ggplot2 box plot : Quick start guide - R software and data visualization,” Correlation matrix - STHDA. [Online]. Available: http://www.sthda.com/english/wiki/ggplot2-box-plot-quick-start-guide-r-software-and-data-visualization#basic-box-plots. [Accessed: 05-Nov-2018].
 
-https://stackoverflow.com/questions/43314328/how-to-use-dplyrmutate-all-for-rounding-selected-columns
+[8] “How to use dplyr::mutate_all for rounding selected columns,” Stack Overflow. [Online]. Available: https://stackoverflow.com/questions/43314328/how-to-use-dplyrmutate-all-for-rounding-selected-columns. [Accessed: 05-Nov-2018].
