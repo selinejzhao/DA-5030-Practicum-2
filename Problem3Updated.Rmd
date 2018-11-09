@@ -1,0 +1,207 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Problem 3
+
+LOAD AND EXPLORE DATA:
+```{r}
+titanic <- read.csv("titanic_data.csv",header=TRUE,na.strings=c(""))
+str(titanic)
+summary(titanic)
+```
+As we can see, there is a lot of room for cleaning, especially in Name, Ticket, and Cabin. Embarked also has 2 rows with NA values.
+
+CLEANING DATA:
+Although the name column is mostly unusable for our purposes, there is one part within the feature that might be beneficial to us later -- the title.
+```{r}
+#create new Title feature extracted from Name
+titanic$Title <- gsub('(.*, )|(\\..*)', '', titanic$Name)
+table(titanic$Sex, titanic$Title)
+```
+Since there are quite a few different salutations being used throughout the dataset, but only a few popular ones, we will try and consolidate them as much as possible.
+```{r}
+#Mlle = Mademoiselle = Miss
+#Ms = Miss
+#Mme = Madame = Mrs
+titanic$Title[titanic$Title == "Mlle"] <- "Miss" 
+titanic$Title[titanic$Title == "Ms"] <- "Miss"
+titanic$Title[titanic$Title == "Mme"] <- "Mrs"
+#uncommon title counts combined to "rare" category since there aren't enough for us to draw conclusions from
+rare_title <- c("Capt", "Col", "Don", "Dr", "Jonkheer", "Lady", "Major", "Rev", "Sir", "the Countess")
+#if any of the titles are in the rare_title vector, replace with "Rare"
+titanic$Title[titanic$Title %in% rare_title] <- "Rare"
+#double check the Title column has been cleaned properly
+table(titanic$Sex, titanic$Title)
+```
+In theory, the titles could be consolidated even further (i.e. Capt = Mr), however, some of these "rare" titles are indicative of class, so it's better to keep them separate.
+
+IMPUTING MISSING DATA:
+As we saw from the summary above, there are 2 rows with NA's from the embarked column. Since there are such few cases, it is worth it to impute so we can include this feature in future analysis methods.
+```{r}
+#identify which rows have missing values in Embarked
+which(is.na(titanic$Embarked))
+```
+After doing some online research, it seems that the three embarkation points (Cherbourg, Queenstown, Southampton) depended on the passenger class, so it is reasonable to include the variables Pclass and Fare in the imputation process. 
+```{r}
+#create new dataframe for imputation process wtih relevant variables
+titanic.emb <- titanic[c("Pclass", "Fare", "Embarked")]
+head(titanic.emb)
+```
+```{r}
+library(DMwR)
+#knnImputation function from DMwR package, which fills in NA values in the dataframe using k Nearest Neighbors of each NA case
+titanic.emb.imp <- knnImputation(titanic.emb, k = 30, scale = T, meth = "weighAvg", distData = NULL)
+#df = titanic.emb
+#k = 30, sqrt(891) = 29.8
+#scale = TRUE, the data need be scaled before finding nearest neighbors since there is a large discrepancy between the ranges of the Pclass and Fare values
+#meth = "weighAvg", this function will use a weighted average of the values of the neighbours. The weights are given by exp(-dist(k,x), where dist(k,x) is the euclidean distance between the case with NAs (x) and the neighbour k
+#distData = NULL, because there are no training/test sets applicable
+titanic.emb.imp[c(62, 830),]
+```
+We can see that the predicted embarkation point for both these cases is Cherbourg. This makes sense because both passengers are in 1st class and paid the same fare of 80 dollars. Furthermore, if we look at a box plot of these 3 variables, we will see that the median fare for a first class passenger departing from Cherbourg is also around 80 dollars.
+```{r}
+titanic.emb2 <- titanic.emb[-c(62,830),]
+library(ggplot2)
+ggplot(titanic.emb2, aes(x = Embarked, y = Fare, fill = factor(Pclass))) + geom_boxplot() + geom_hline(aes(yintercept=80), linetype="dashed")
+```
+```{r}
+#insert imputed values into original dataset
+titanic$Embarked[titanic$PassengerId == 62] <- "C"
+titanic$Embarked[titanic$PassengerId == 830] <- "C"
+sum(is.na(titanic$Embarked))
+```
+2. Impute any missing values for the age variable using an imputation strategy of your choice. State why you chose that strategy and what others could have been used and why you didn't choose them.
+```{r}
+sum(is.na(titanic$Age))
+```
+Because Age has quite a few data gaps, we will try to include as many features as possible to improve predictions, while still excluding any variables that aren't directly relevant or have missing data. The features we have deemed less-than-useful are Passenger Id, Name, Ticket, and Cabin.
+```{r}
+dropvars <- names(titanic) %in% c("PassengerId","Name","Ticket","Cabin")
+titanic.age <- titanic[!dropvars]
+titanic.age$Title <- as.factor(titanic.age$Title)
+head(titanic.age)
+```
+Here, we will use kNN to impute the missing Age values because it is able to predict unknown values with no underlying assumptions of the training data distribution.Furthermore, it is effective with a variety of different data types, which is particularly useful for this situation since we are working with numeric, categorical, and other types of features. Naive Bayes is another powerful method for data imputation. However, it is not well suited for this specific instance because the algorithm does not work well with continuous variables, which are present in our dataset. Furthermore, Naive Bayes is primarily used for binary classification, and we are trying to impute a non-binary variable -- Age.
+```{r}
+titanic.age.imp <- knnImputation(titanic.age, k = 30, scale = T, meth = "weighAvg", distData = NULL)
+head(titanic.age.imp)
+```
+```{r}
+#round the entire age column
+library(dplyr)
+#mutate_at function from dplyr library, which allows the specified function to be applied to a selected group of columns within the dataframe
+titanic.age.imp <- titanic.age.imp %>% mutate_at(4, round, 0)
+#df = titanic.age.imp
+# %>% = a method to "chain"/nest functions together
+#mutate_at(col. # = 4, function = "round", # of digits = 0)
+head(titanic.age.imp)
+```
+Let's compare the imputated results with the original distribution of passenger ages to ensure that nothing has gone completely awry.
+```{r}
+par(mfrow=c(1,2))
+hist(titanic$Age, freq=F, main="Age: Original Data", xlab = "Age", col="green", ylim=c(0,0.04))
+hist(titanic.age.imp$Age, freq=F, main="Age: KNN Imputated Data", xlab = "Age", col="blue", ylim=c(0,0.04))
+```
+Overall, the distribution has remained the same so we can apply the kNN age outputs to the original data.
+```{r}
+titanic$Age <- titanic.age.imp$Age
+head(titanic)
+sum(is.na(titanic$Age))
+```
+Now both the Age and Embarked features have been processed successfully. The only feature left with NAs is Cabin, which could potentially be imputed as well. However, given the sparseness of the column (over 75% of cells blanks), it would be more useful just to not include the feature during analysis.
+
+1. Divide the provided Titanic Survival Data into two subsets: a training data set and a test data set. Use whatever strategy you believe it best. Justify your answer.
+
+Because the Titanic dataset is already in a random order, we can split the set 80/20 train/test.
+```{r}
+titanic$Survived <- as.factor(titanic$Survived)
+t.train <- titanic[1:712,]
+t.test <- titanic[713:891,]
+prop.table(table(t.train$Survived))
+prop.table(table(t.test$Survived))
+```
+Both training and test datasets have an evenly split survival rate, so we can start building our model.
+
+BUILDING THE MODEL:
+3. Construct a logistic regression model to predict the probability of a passenger surviving the Titanic accident. Test the statistical significance of all parameters and eliminate those that have a p-value > 0.05 using stepwise backward elimination.
+```{r}
+model <- glm(formula = Survived ~ Pclass+Sex+Age+SibSp+Parch+Fare+Embarked+Title, family=binomial, data = t.train)
+summary(model)
+```
+As shown above, we can see that TitleMrs isn't statistically significant, so we will remove it. This is an automatically created dummy variable, so we will remove it by excluding it from the other Title dummies. 
+```{r}
+model2 <- glm(formula = Survived ~ Pclass+Sex+Age+SibSp+Parch+Fare+Embarked+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model2)
+```
+Sex to be removed next:
+```{r}
+model3 <- glm(formula = Survived ~ Pclass+Age+SibSp+Parch+Fare+Embarked+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model3)
+```
+EmbarkedQ to be removed next
+```{r}
+model4 <- glm(formula = Survived ~ Pclass+Age+SibSp+Parch+Fare+factor(Embarked, exclude = "Q")+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model4)
+```
+Parch to be removed next
+```{r}
+model5 <- glm(formula = Survived ~ Pclass+Age+SibSp+Fare+factor(Embarked, exclude = "Q")+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model5)
+```
+Now let's remove fare. 
+
+```{r}
+model6 <- glm(formula = Survived ~ Pclass+Age+SibSp+factor(Embarked, exclude = "Q")+factor(Title, exclude="Mrs"), family=binomial, data = t.train)
+summary(model6)
+```
+Now let's remove TitleMiss
+
+```{r}
+model7 <- glm(formula = Survived ~ Pclass+Age+SibSp+factor(Embarked, exclude = "Q")+factor(Title, exclude=c("Mrs", "Miss")), family=binomial, data = t.train)
+summary(model7)
+```
+Now remove all of Embarked
+
+```{r}
+model.final <- glm(formula = Survived ~ Pclass+Age+SibSp+factor(Title, exclude=c("Mrs", "Miss")), family=binomial, data = t.train)
+summary(model.final)
+```
+
+
+Now all of our predictors are statistically significant! The final model includes Pclass, Age, SibSp, TitleMr, TitleRare.
+
+Let's analyze the model. As we can see the final model AIC is 398.06, which seems pretty good! The model features are statistically significant and contribute information to predicting the survived class. 
+
+Let's take a look at some plots. 
+
+```{r}
+plot(model.final)
+```
+DESCRIBE THIS USING THE 4 PARAGRAPHS FROM MINE
+
+4. State the model as a regression equation.
+
+```{r}
+model.final
+```
+
+The regression equation is Y = 4.57789 - 0.92731(Pclass) - 0.03136(Age) - 0.3978(SibSp) - 2.95276(TitleMr) - 2.08464(TitleRare)
+
+EVALUATING THE MODEL:
+5. Test the model against the test data set and determine its prediction accuracy (as a percentage correct).
+```{r}
+#predict actual values
+pred <- predict(model.final, t.test, type = "response")
+#apply prediction threshold
+pred <- as.factor(ifelse(pred > 0.5,1,0))
+#check accuracy and false/true positives/negatives
+library(caret)
+confusionMatrix(pred, t.test$Survived)
+```
+
+As we can see, the overall model p-value is less than .05, which is great! Also the accuracy is 87.8%. This is pretty good. We had 2 false positives and 13 false negatives. In this instance a false positive would be more costly because predicting someone to surive but they actually don't is bad. Luckily we only had 2 of these. 
+
+
+
